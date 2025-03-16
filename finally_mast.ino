@@ -19,15 +19,15 @@ int SENSOR_NUMBER = 0;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// 自定义CRC16校验函数
+// CRC16校验
 uint16_t calculateCRC16(uint8_t* data, int length) {
-    uint16_t crc = 0xFFFF;  // 初始值
+    uint16_t crc = 0xFFFF; 
     for (int i = 0; i < length; i++) {
         crc ^= data[i];
         for (int j = 0; j < 8; j++) {
             if ((crc & 0x0001) != 0) {
                 crc >>= 1;
-                crc ^= 0xA001;  // CRC-16-Modbus多项式
+                crc ^= 0xA001;  
             } else {
                 crc >>= 1;
             }
@@ -36,7 +36,8 @@ uint16_t calculateCRC16(uint8_t* data, int length) {
     return crc;
 }
 
-// MQTT 重连函数
+
+// MQTT 重连
 void reconnect() {
     while (!client.connected()) {
         Serial.print("尝试连接 MQTT...");
@@ -50,14 +51,16 @@ void reconnect() {
     }
 }
 
-// 定义Modbus帧的结构
-const int FRAME_HEADER = 0xAD;  // 字头
-const int FRAME_TAIL = 0xAF;    // 字尾
-const int DEVICE_ADDRESS = 0x01;  // 设备地址
-const int FUNCTION_CODE = 0x03;  // 功能码（轮询功能码示例）
+
+// 定义Modbus帧
+const int FRAME_HEADER = 0xAD;  
+const int FRAME_TAIL = 0xAF;    
+const int DEVICE_ADDRESS = 0x01;  
+const int FUNCTION_CODE = 0x03;  // 轮询功能码
 const int DATA_LENGTH = 0x00;    // 数据长度，轮询时为0
 bool openConfirm = 0;
-// WiFi 连接函数
+
+// WiFi 连接
 void setup_wifi() {
     delay(10);
     Serial.println();
@@ -67,19 +70,18 @@ void setup_wifi() {
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
-        Serial.print(WiFi.status());  // 打印WiFi状态码
+        Serial.print(WiFi.status());  
     }
     Serial.println("");
     Serial.println("WiFi 连接成功！");
     Serial.println(WiFi.localIP());
 }
 
-// 验证接收到的Modbus帧
+
+// 验证接收到的Modbus帧 暂未调用
 bool validateFrame(uint8_t* frame, int length) {
-    // 确保帧长度至少包含头、地址、功能码、字节数、CRC和尾
     if (length < 9) return false;
 
-    // 提取帧的有效部分（不包括帧尾）
     int dataLength = length - 1;  // 排除帧尾
     uint16_t receivedCRC = (frame[dataLength - 1] << 8) | frame[dataLength - 2];
     uint16_t calculatedCRC = calculateCRC16(frame, dataLength - 2);  // 不包括CRC本身
@@ -90,25 +92,16 @@ bool validateFrame(uint8_t* frame, int length) {
      
 
 
-        
-// 解析Modbus帧并提取传感器数据
+// 解析Modbus帧
 void parseModbusFrame(uint8_t* frame, int length) {
-    // 提取字节数
-    int dataLength = frame[3];  // 字节数字段
-    int transmitterCount = dataLength / 3;  // 每个变送器占用3字节
+    int dataLength = frame[3];  
+    int transmitterCount = dataLength / 3;  // 每个传感器占用3字节
 
-    Serial.print("Number of Transmitters: ");
-    Serial.println(transmitterCount);
-
-
-
-    // 提取每个变送器的数据
     for (int i = 0; i < transmitterCount; i++) {
         int index = 4 + i * 3;  // 数据起始位置
         int transmitterNumber = frame[index];  // 变送器序号
         uint16_t adcValue = (frame[index + 1] << 8) | frame[index + 2];  // 16位ADC值
-
-        // 假设参考电压为3.3V，ADC分辨率为65535
+        
         const float referenceVoltage = 3.3;
         const int adcResolution = 65535;
         float voltage = (adcValue / (float)adcResolution) * referenceVoltage;
@@ -118,7 +111,7 @@ void parseModbusFrame(uint8_t* frame, int length) {
         Serial.print(": ADC Value = ");
         Serial.print(adcValue);
         Serial.print(", Voltage = ");
-        Serial.print(voltage, 3);  // 保留3位小数
+        Serial.print(voltage, 3);  // 保留3位小数 可改
         Serial.println(" V");
 
         // 将解析结果发送到MQTT
@@ -132,6 +125,7 @@ void parseModbusFrame(uint8_t* frame, int length) {
         client.publish(mqtt_topic, mqttMessage);
     }
 }
+
 // 回调函数
 void messageReceived(char* topic, byte* payload, unsigned int length) {
     Serial.print("Message arrived [");
@@ -166,6 +160,7 @@ void messageReceived(char* topic, byte* payload, unsigned int length) {
         client.publish(mqtt_init_topic, "Unknown, Init again");
     }
 }
+
 void setup() {
     Serial.begin(115200);
     setup_wifi();
