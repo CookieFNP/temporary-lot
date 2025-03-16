@@ -59,9 +59,14 @@ const int adcResolution = 65535;  // 16位ADC分辨率
 *const float simulatedVoltages[] = {2.5, 3.0, 1.8, 2.2};  // 示例电压值
 *const int TRANSMITTER_COUNT = sizeof(simulatedVoltages) / sizeof(simulatedVoltages[0]);  // 变送器数量
 */
+int TRANSMITTER_COUNT = 0;
 
-// TODO: TRANSMITTER_COUNT获取
-const int TRANSMITTER_COUNT = 3 ;
+int getSensorNumber(uint8_t* frame, int length) {
+  unsigned char transmitterCountByte = frame[length - 1]; 
+  return transmitterCountByte;
+}
+
+        
 void setup() {
     Serial.begin(115200);
     mySerial.begin(115200);
@@ -94,6 +99,7 @@ void loop() {
                 // 帧接收完成，解析帧
                 delay(500); 
                 frameStart = false;
+                TRANSMITTER_COUNT = getSensorNumber(frameBuffer, frameIndex);
                 sendModbusResponse();//
             }
         }
@@ -105,21 +111,23 @@ void loop() {
 
 // 验证接收到的Modbus帧
 bool validateFrame(uint8_t* frame, int length) {
-    // 确保帧长度至少包含头、地址、功能码、数据长度、CRC和尾
+    // 确保帧长度至少包含头、地址、功能码、数据长度、传感器数量、CRC和尾
     if (length < 9) return false;
 
-    // 提取帧的有效部分（不包括帧尾）
     int dataLength = length - 1;  // 排除帧尾
     uint16_t receivedCRC = (frame[dataLength - 1] << 8) | frame[dataLength - 2];
-    uint16_t calculatedCRC = calculateCRC16(frame, dataLength - 2);  // 不包括CRC本身
+    uint16_t calculatedCRC = calculateCRC16(frame, dataLength - 2);  
 
-    // 比较接收到的CRC和计算的CRC
     return (receivedCRC == calculatedCRC);
 }
 void sendModbusResponse() {
     uint8_t responseFrame[256];  // 响应帧缓冲区
     int responseLength = 0;
-
+    
+    if (TRANSMITTER_COUNT == 0 || TRANSMITTER_COUNT > 4 ) {
+    Serial.println("Error: No transmitters to process.");
+    return;
+}   
     // 构造响应帧
     responseFrame[responseLength++] = FRAME_HEADER;  // 字头
     responseFrame[responseLength++] = DEVICE_ADDRESS;  // 设备地址
