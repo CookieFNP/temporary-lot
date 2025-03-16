@@ -4,8 +4,6 @@
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
 
-
-// 定义软串口引脚
 const int rxPin = 2;  // RX 引脚连接到数字引脚 2
 const int txPin = 3;  // TX 引脚连接到数字引脚 3
 
@@ -17,15 +15,15 @@ int16_t adcBuffer[FILTER_SIZE];
 uint8_t bufIndex = 0;
 
 
-// 自定义CRC16校验函数
+// CRC16校验函数
 uint16_t calculateCRC16(uint8_t* data, int length) {
-    uint16_t crc = 0xFFFF;  // 初始值
+    uint16_t crc = 0xFFFF; 
     for (int i = 0; i < length; i++) {
         crc ^= data[i];
         for (int j = 0; j < 8; j++) {
             if ((crc & 0x0001) != 0) {
                 crc >>= 1;
-                crc ^= 0xA001;  // CRC-16-Modbus多项式
+                crc ^= 0xA001;  
             } else {
                 crc >>= 1;
             }
@@ -45,20 +43,16 @@ int16_t readFilteredADC(int a) {
 
 
 // Modbus帧
-const int FRAME_HEADER = 0xAD;  // 字头
-const int FRAME_TAIL = 0xAF;    // 字尾
-const int DEVICE_ADDRESS = 0x01;  // 设备地址
-const int FUNCTION_CODE = 0x03;  // 功能码
-const int DATA_LENGTH = 0x00;    // 数据长度，轮询时为0
+const int FRAME_HEADER = 0xAD; 
+const int FRAME_TAIL = 0xAF;    
+const int DEVICE_ADDRESS = 0x01;  
+const int FUNCTION_CODE = 0x03;  
+const int DATA_LENGTH = 0x00;    
 
 // ADC相关参数
 const float referenceVoltage = 3.3;  // ADC参考电压
 const int adcResolution = 65535;  // 16位ADC分辨率
 
-/* 模拟的电压值（单位：V） 调试用
-*const float simulatedVoltages[] = {2.5, 3.0, 1.8, 2.2};  // 示例电压值
-*const int TRANSMITTER_COUNT = sizeof(simulatedVoltages) / sizeof(simulatedVoltages[0]);  // 变送器数量
-*/
 int TRANSMITTER_COUNT = 0;
 
 int getSensorNumber(uint8_t* frame, int length) {
@@ -75,38 +69,31 @@ void setup() {
 }
 
 void loop() {
-    // 接收数据并解析
+
     if (Serial.available() > 0) {
-        // 读取接收到的数据
         uint8_t receivedByte = Serial.read();
 
-        // 检查是否为帧头
         static bool frameStart = false;
-        static uint8_t frameBuffer[256];  // 帧缓冲区
+        static uint8_t frameBuffer[256]; 
         static int frameIndex = 0;
 
         if (receivedByte == FRAME_HEADER) {
-            // 如果检测到帧头，重置缓冲区
             frameStart = true;
             frameIndex = 0;
             frameBuffer[frameIndex++] = receivedByte;
         } else if (frameStart) {
-            // 如果正在接收帧，继续填充缓冲区
             frameBuffer[frameIndex++] = receivedByte;
 
-            // 检查是否为帧尾
-            if (receivedByte == FRAME_TAIL) {  //AF
-                // 帧接收完成，解析帧
-                delay(500); 
+            if (receivedByte == FRAME_TAIL) {  
+                delay(500);   //可调大，目的是防止半双工485通信冲突
                 frameStart = false;
                 TRANSMITTER_COUNT = getSensorNumber(frameBuffer, frameIndex);
-                sendModbusResponse();//
+                sendModbusResponse();
             }
         }
     }
 
-    // 等待一段时间
-    delay(100);  // 短暂延时，避免过度占用CPU
+    delay(100); 
 }
 
 // 验证接收到的Modbus帧
@@ -129,9 +116,9 @@ void sendModbusResponse() {
     return;
 }   
     // 构造响应帧
-    responseFrame[responseLength++] = FRAME_HEADER;  // 字头
-    responseFrame[responseLength++] = DEVICE_ADDRESS;  // 设备地址
-    responseFrame[responseLength++] = FUNCTION_CODE;  // 功能码
+    responseFrame[responseLength++] = FRAME_HEADER;  
+    responseFrame[responseLength++] = DEVICE_ADDRESS; 
+    responseFrame[responseLength++] = FUNCTION_CODE;  
 
     // 添加字节数（变送器数量 * 3）
     responseLength += 1;
