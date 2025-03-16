@@ -10,7 +10,11 @@ const char* password = "x";  // 密码
 const char* mqtt_server = "112.4.115.127";  // MQTT 服务器地址
 const int mqtt_port = 1883;  // MQTT 服务器端口
 const char* mqtt_client_id = "ESP8266Client";  // MQTT 客户端 ID
-const char* mqtt_topic = "machines/1001/2333/value";  // MQTT 发布的主题
+const char* mqtt_topic = "machines/1001-1001-1001-1001/aa/value";
+const char* mqtt_init_topic = "valueGet/channelCount/0001"; // 暂定此主机编号为0001
+
+static bool sensorNumber = false;
+int SENSOR_NUMBER = 0;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -52,7 +56,7 @@ const int FRAME_TAIL = 0xAF;    // 字尾
 const int DEVICE_ADDRESS = 0x01;  // 设备地址
 const int FUNCTION_CODE = 0x03;  // 功能码（轮询功能码示例）
 const int DATA_LENGTH = 0x00;    // 数据长度，轮询时为0
-
+bool openConfirm = 0;
 // WiFi 连接函数
 void setup_wifi() {
     delay(10);
@@ -79,11 +83,14 @@ bool validateFrame(uint8_t* frame, int length) {
     int dataLength = length - 1;  // 排除帧尾
     uint16_t receivedCRC = (frame[dataLength - 1] << 8) | frame[dataLength - 2];
     uint16_t calculatedCRC = calculateCRC16(frame, dataLength - 2);  // 不包括CRC本身
-
+  
     // 比较接收到的CRC和计算的CRC
     return (receivedCRC == calculatedCRC);
 }
+     
 
+
+        
 // 解析Modbus帧并提取传感器数据
 void parseModbusFrame(uint8_t* frame, int length) {
     // 提取字节数
@@ -116,54 +123,104 @@ void parseModbusFrame(uint8_t* frame, int length) {
 
         // 将解析结果发送到MQTT
         char mqttMessage[100];
-        snprintf(mqttMessage, sizeof(mqttMessage), "Transmitter %d: Voltage = %.3f V", transmitterNumber, voltage);
+        //snprintf(mqttMessage, sizeof(mqttMessage), "Transmitter %d: Voltage = %.3f V", transmitterNumber, voltage);
+        if (i == 0) mqtt_topic = "machines/1001-1001-1001-1001/a0/value";
+        if (i == 1) mqtt_topic = "machines/1001-1001-1001-1001/a1/value";
+        if (i == 2) mqtt_topic = "machines/1001-1001-1001-1001/a2/value";
+        if (i == 3) mqtt_topic = "machines/1001-1001-1001-1001/a3/value";
+        snprintf(mqttMessage, sizeof(mqttMessage), "[%.3f][1]", voltage);
         client.publish(mqtt_topic, mqttMessage);
     }
 }
+// 回调函数
+void messageReceived(char* topic, byte* payload, unsigned int length) {
+    Serial.print("Message arrived [");
+    Serial.print(topic);
+    Serial.print("] ");
+    for (unsigned int i = 0; i < length; i++) {
+        Serial.print((char)payload[i]);
+    }
+    Serial.println();
 
+    // 处理消息内容
+    char message[length + 1];
+    for (unsigned int i = 0; i < length; i++) {
+        message[i] = (char)payload[i];
+    }
+    message[length] = '\0';  // 添加字符串结束符
+
+    if (strcmp(message, "1") == 0) {
+        SENSOR_NUMBER = 0x01;
+        sensorNumber = true;
+    } else if (strcmp(message, "2") == 0) {
+        SENSOR_NUMBER = 0x02;
+        sensorNumber = true;
+    } else if (strcmp(message, "3") == 0) {
+        SENSOR_NUMBER = 0x03;
+        sensorNumber = true;
+    } else if (strcmp(message, "4") == 0) {
+        SENSOR_NUMBER = 0x04;
+        sensorNumber = true;
+    } else {
+        Serial.println("Unknown command");
+        client.publish(mqtt_init_topic, "Unknown, Init again");
+    }
+}
 void setup() {
     Serial.begin(115200);
     setup_wifi();
     client.setServer(mqtt_server, mqtt_port);
     reconnect();
+    
 }
 
 void loop() {
+    if (client.connected() && openConfirm == 0){
+      openConfirm = 1;
+      client.publish(mqtt_init_topic, "Init");
+      client.subscribe("response_topic"); 
+    }
+
+    client.loop();
     // 检查 MQTT 连接
     if (!client.connected()) {
         reconnect();
     }
     client.loop();
-
-    // 构造Modbus帧
-    uint8_t frame[10];  // 帧最大长度
-    int frameLength = 0;
-
-    // 添加字头
-    frame[frameLength++] = FRAME_HEADER;
-
-    // 添加设备地址
-    frame[frameLength++] = DEVICE_ADDRESS;
-
-    // 添加功能码
-    frame[frameLength++] = FUNCTION_CODE;
-
-    // 添加数据长度
-    frame[frameLength++] = DATA_LENGTH;
-
-    // 计算CRC校验码
-    uint16_t crc = calculateCRC16(frame, frameLength);
-    frame[frameLength++] = crc & 0xFF;           // CRC低字节
-    frame[frameLength++] = (crc >> 8) & 0xFF;    // CRC高字节
-
-    // 添加字尾
-    frame[frameLength++] = FRAME_TAIL;
-
-    // 发送Modbus帧
-    Serial.write(frame, frameLength);
+    client.setCallback(messageReceived);  // 设置回调函数
 
 
+    if ( sensorNumber == true )
+    {
+        // 构造Modbus帧
+        uint8_t frame[12];  // 帧最大长度
+        int frameLength = 0;
+    
+        // 字头
+        frame[frameLength++] = FRAME_HEADER;
+    
+        // 设备地址
+        frame[frameLength++] = DEVICE_ADDRESS;
+    
+        // 功能码
+        frame[frameLength++] = FUNCTION_CODE;
+    
+        // 数据长度
+        frame[frameLength++] = DATA_LENGTH;
+    
+        // CRC校验码
+        uint16_t crc = calculateCRC16(frame, frameLength);
+        frame[frameLength++] = crc & 0xFF;           // CRC低字节
+        frame[frameLength++] = (crc >> 8) & 0xFF;    // CRC高字节
+        
+        // 传感器数量
+        frame[frameLength++] = SENSOR_NUMBER;
+        
+        // 添加字尾
+        frame[frameLength++] = FRAME_TAIL;
+    
+        Serial.write(frame, frameLength);
 
-    // 等待一段时间
-    delay(10000);  // 
+        delay(10000);  
+    }
 }
